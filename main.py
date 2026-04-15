@@ -1,5 +1,6 @@
 import time
 import requests
+from datetime import datetime, timedelta
 
 TELEGRAM_TOKEN = "8308050985:AAFcTT2_ZP-h7Cie8UhRO71mKKrUkH8RAbQ"
 TELEGRAM_CHAT_ID = "640214582"
@@ -20,8 +21,10 @@ def get_candles():
         return []
     result = []
     for c in data["values"]:
+        dt = datetime.strptime(c["datetime"], "%Y-%m-%d %H:%M:%S")
+        dt_ny = dt + timedelta(hours=4)
         result.append({
-            "time":  c["datetime"] + " NY",
+            "time":  dt_ny.strftime("%Y-%m-%d %H:%M") + " NY",
             "open":  float(c["open"]),
             "high":  float(c["high"]),
             "low":   float(c["low"]),
