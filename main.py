@@ -1,12 +1,9 @@
 import time
 import requests
-from datetime import datetime, timezone, timedelta
 
 TELEGRAM_TOKEN = "8308050985:AAFcTT2_ZP-h7Cie8UhRO71mKKrUkH8RAbQ"
 TELEGRAM_CHAT_ID = "640214582"
 TWELVEDATA_KEY = "a5f67c63e14e44f7830df81f38232f4e"
-
-NY_OFFSET = timedelta(hours=-4)
 
 def send_telegram(msg):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
@@ -23,10 +20,8 @@ def get_candles():
         return []
     result = []
     for c in data["values"]:
-        utc_time = datetime.strptime(c["datetime"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
-        ny_time = utc_time + NY_OFFSET
         result.append({
-            "time":  ny_time.strftime("%Y-%m-%d %H:%M NY"),
+            "time":  c["datetime"] + " NY",
             "open":  float(c["open"]),
             "high":  float(c["high"]),
             "low":   float(c["low"]),
@@ -40,7 +35,6 @@ def get_active_fvgs(candles):
         c1 = candles[i - 2]
         c3 = candles[i]
 
-        # FVG bullish: low[c3] > high[c1]
         if c3["low"] > c1["high"]:
             top = c3["low"]
             bot = c1["high"]
@@ -53,7 +47,6 @@ def get_active_fvgs(candles):
             if not mitigated:
                 fvgs.append({"type": "bullish", "top": top, "bot": bot, "formed": c3["time"]})
 
-        # FVG bearish: high[c3] < low[c1]
         if c3["high"] < c1["low"]:
             top = c1["low"]
             bot = c3["high"]
