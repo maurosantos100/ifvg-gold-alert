@@ -13,7 +13,10 @@ def send_telegram(msg):
     requests.post(url, json={"chat_id": TELEGRAM_CHAT_ID, "text": msg})
 
 def get_candles():
-    url = f"https://api.twelvedata.com/time_series?symbol=XAU/USD&interval=1h&outputsize=50&apikey={TWELVEDATA_KEY}"
+    url = (
+        f"https://api.twelvedata.com/time_series"
+        f"?symbol=XAU/USD&interval=1h&outputsize=50&apikey={TWELVEDATA_KEY}"
+    )
     r = requests.get(url)
     data = r.json()
     if "values" not in data:
@@ -23,66 +26,73 @@ def get_candles():
         utc_time = datetime.strptime(c["datetime"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
         ny_time = utc_time + NY_OFFSET
         result.append({
-            "time": ny_time.strftime("%Y-%m-%d %H:%M NY"),
-            "high": float(c["high"]),
-            "low": float(c["low"]),
+            "time":  ny_time.strftime("%Y-%m-%d %H:%M NY"),
+            "open":  float(c["open"]),
+            "high":  float(c["high"]),
+            "low":   float(c["low"]),
             "close": float(c["close"]),
-            "open": float(c["open"])
         })
     return list(reversed(result))
 
-def detect_ifvg(candles):
-    alerts = []
-    last = candles[-1]
-
-    # Buscar todos los FVGs activos en el historico
-    # Un FVG se considera activo si NO fue mitigado antes de la ultima vela
+def get_active_fvgs(candles):
+    fvgs = []
     for i in range(2, len(candles) - 1):
-        c1 = candles[i-2]
-        c2 = candles[i-1]
+        c1 = candles[i - 2]
         c3 = candles[i]
 
         # FVG bullish: low[c3] > high[c1]
         if c3["low"] > c1["high"]:
-            fvg_top = c3["low"]
-            fvg_bot = c1["high"]
-
-            # Chequear si ya fue mitigado antes de la ultima vela
-            already_mitigated = False
-            for j in range(i+1, len(candles)-1):
-                if candles[j]["close"] < fvg_bot:
-                    already_mitigated = True
+            top = c3["low"]
+            bot = c1["high"]
+            mitigated = False
+            for j in range(i + 1, len(candles) - 1):
+                body_low = min(candles[j]["open"], candles[j]["close"])
+                if body_low < bot:
+                    mitigated = True
                     break
-
-            # La ultima vela cierra con cuerpo por debajo del bottom -> IFVG bearish
-            if not already_mitigated:
-                body_close = last["close"]
-                body_open = last["open"]
-                body_bottom = min(body_close, body_open)
-                if body_close < fvg_bot and body_bottom < fvg_bot:
-                    key = f"bull_ifvg_{c1['time']}_{c3['time']}"
-                    alerts.append((key, f"IFVG BEARISH creado | XAUUSD H1\nFVG top: {fvg_top:.2f} | Bot: {fvg_bot:.2f}\nMitigado en vela: {last['time']}"))
+            if not mitigated:
+                fvgs.append({"type": "bullish", "top": top, "bot": bot, "formed": c3["time"]})
 
         # FVG bearish: high[c3] < low[c1]
         if c3["high"] < c1["low"]:
-            fvg_top = c1["low"]
-            fvg_bot = c3["high"]
-
-            # Chequear si ya fue mitigado antes de la ultima vela
-            already_mitigated = False
-            for j in range(i+1, len(candles)-1):
-                if candles[j]["close"] > fvg_top:
-                    already_mitigated = True
+            top = c1["low"]
+            bot = c3["high"]
+            mitigated = False
+            for j in range(i + 1, len(candles) - 1):
+                body_high = max(candles[j]["open"], candles[j]["close"])
+                if body_high > top:
+                    mitigated = True
                     break
+            if not mitigated:
+                fvgs.append({"type": "bearish", "top": top, "bot": bot, "formed": c3["time"]})
 
-            # La ultima vela cierra con cuerpo por encima del top -> IFVG bullish
-            if not already_mitigated:
-                body_close = last["close"]
-                body_open = last["open"]
-                body_top = max(body_close, body_open)
-                if body_close > fvg_top and body_top > fvg_top:
-                    key = f"bear_ifvg_{c1['time']}_{c3['time']}"
-                    alerts.append((key, f"IFVG BULLISH creado | XAUUSD H1\nFVG top: {fvg_top:.2f} | Bot: {fvg_bot:.2f}\nMitigado en vela: {last['time']}"))
+    return fvgs
+
+def check_ifvg(fvgs, last_candle):
+    alerts = []
+    body_high = max(last_candle["open"], last_candle["close"])
+    body_low  = min(last_candle["open"], last_candle["close"])
+
+    for fvg in fvgs:
+        if fvg["type"] == "bullish":
+            if last_candle["close"] < fvg["bot"] and body_low < fvg["bot"]:
+                key = f"ifvg_bear_{fvg['formed']}"
+                msg = (
+                    f"IFVG BEARISH creado | XAUUSD H1\n"
+                    f"FVG top: {fvg['top']:.2f} | Bot: {fvg['bot']:.2f}\n"
+                    f"Invalidado en: {last_candle['time']}"
+                )
+                alerts.append((key, msg))
+
+        elif fvg["type"] == "bearish":
+            if last_candle["close"] > fvg["top"] and body_high > fvg["top"]:
+                key = f"ifvg_bull_{fvg['formed']}"
+                msg = (
+                    f"IFVG BULLISH creado | XAUUSD H1\n"
+                    f"FVG top: {fvg['top']:.2f} | Bot: {fvg['bot']:.2f}\n"
+                    f"Invalidado en: {last_candle['time']}"
+                )
+                alerts.append((key, msg))
 
     return alerts
 
@@ -91,8 +101,11 @@ sent = set()
 while True:
     try:
         candles = get_candles()
-        if candles:
-            for key, msg in detect_ifvg(candles):
+        if len(candles) >= 4:
+            fvgs = get_active_fvgs(candles)
+            last = candles[-1]
+            alerts = check_ifvg(fvgs, last)
+            for key, msg in alerts:
                 if key not in sent:
                     send_telegram(msg)
                     sent.add(key)
