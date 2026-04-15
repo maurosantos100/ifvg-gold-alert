@@ -13,7 +13,7 @@ def send_telegram(msg):
     requests.post(url, json={"chat_id": TELEGRAM_CHAT_ID, "text": msg})
 
 def get_candles():
-    url = f"https://api.twelvedata.com/time_series?symbol=XAU/USD&interval=1h&outputsize=10&apikey={TWELVEDATA_KEY}"
+    url = f"https://api.twelvedata.com/time_series?symbol=XAU/USD&interval=1h&outputsize=50&apikey={TWELVEDATA_KEY}"
     r = requests.get(url)
     data = r.json()
     if "values" not in data:
@@ -26,26 +26,64 @@ def get_candles():
             "time": ny_time.strftime("%Y-%m-%d %H:%M NY"),
             "high": float(c["high"]),
             "low": float(c["low"]),
-            "close": float(c["close"])
+            "close": float(c["close"]),
+            "open": float(c["open"])
         })
     return list(reversed(result))
 
 def detect_ifvg(candles):
     alerts = []
-    # Solo mirar las ultimas 3 velas para IFVGs recientes
-    for i in range(max(2, len(candles)-3), len(candles)):
+    last = candles[-1]
+
+    # Buscar todos los FVGs activos en el historico
+    # Un FVG se considera activo si NO fue mitigado antes de la ultima vela
+    for i in range(2, len(candles) - 1):
         c1 = candles[i-2]
+        c2 = candles[i-1]
         c3 = candles[i]
+
+        # FVG bullish: low[c3] > high[c1]
         if c3["low"] > c1["high"]:
-            top = c3["low"]
-            bot = c1["high"]
-            if candles[-1]["close"] < bot:
-                alerts.append(f"IFVG BEARISH creado | XAUUSD H1\nTop: {top:.2f} | Bot: {bot:.2f}\nVela: {c3['time']}")
+            fvg_top = c3["low"]
+            fvg_bot = c1["high"]
+
+            # Chequear si ya fue mitigado antes de la ultima vela
+            already_mitigated = False
+            for j in range(i+1, len(candles)-1):
+                if candles[j]["close"] < fvg_bot:
+                    already_mitigated = True
+                    break
+
+            # La ultima vela cierra con cuerpo por debajo del bottom -> IFVG bearish
+            if not already_mitigated:
+                body_close = last["close"]
+                body_open = last["open"]
+                body_bottom = min(body_close, body_open)
+                if body_close < fvg_bot and body_bottom < fvg_bot:
+                    key = f"bull_ifvg_{c1['time']}_{c3['time']}"
+                    alerts.append((key, f"IFVG BEARISH creado | XAUUSD H1\nFVG top: {fvg_top:.2f} | Bot: {fvg_bot:.2f}\nMitigado en vela: {last['time']}"))
+
+        # FVG bearish: high[c3] < low[c1]
         if c3["high"] < c1["low"]:
-            top = c1["low"]
-            bot = c3["high"]
-            if candles[-1]["close"] > top:
-                alerts.append(f"IFVG BULLISH creado | XAUUSD H1\nTop: {top:.2f} | Bot: {bot:.2f}\nVela: {c3['time']}")
+            fvg_top = c1["low"]
+            fvg_bot = c3["high"]
+
+            # Chequear si ya fue mitigado antes de la ultima vela
+            already_mitigated = False
+            for j in range(i+1, len(candles)-1):
+                if candles[j]["close"] > fvg_top:
+                    already_mitigated = True
+                    break
+
+            # La ultima vela cierra con cuerpo por encima del top -> IFVG bullish
+            if not already_mitigated:
+                body_close = last["close"]
+                body_open = last["open"]
+                body_top = max(body_close, body_open)
+                if body_close > fvg_top and body_top > fvg_top:
+                    key = f"bear_ifvg_{c1['time']}_{c3['time']}"
+                    alerts.append((key, f"IFVG BULLISH creado | XAUUSD H1\nFVG top: {fvg_top:.2f} | Bot: {fvg_bot:.2f}\nMitigado en vela: {last['time']}"))
+
     return alerts
 
 sent = set()
@@ -54,11 +92,11 @@ while True:
     try:
         candles = get_candles()
         if candles:
-            for a in detect_ifvg(candles):
-                if a not in sent:
-                    send_telegram(a)
-                    sent.add(a)
-                    print(f"Sent: {a}")
+            for key, msg in detect_ifvg(candles):
+                if key not in sent:
+                    send_telegram(msg)
+                    sent.add(key)
+                    print(f"Sent: {msg}")
     except Exception as e:
         print(f"Error: {e}")
     time.sleep(300)
