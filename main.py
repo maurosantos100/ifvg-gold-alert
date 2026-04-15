@@ -1,10 +1,9 @@
-import os
 import time
 import requests
 
-TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
-TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
-TWELVEDATA_KEY = os.environ["TWELVEDATA_KEY"]
+TELEGRAM_TOKEN = "8308050985:AAFcTT2_ZP-h7Cie8UhRO71mKKrUkH8RAbQ"
+TELEGRAM_CHAT_ID = "640214582"
+TWELVEDATA_KEY = "a5f67c63e14e44f7830df81f38232f4e"
 
 def send_telegram(msg):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
@@ -34,21 +33,17 @@ def detect_ifvg(candles):
     for i in range(2, len(candles)):
         c1 = candles[i-2]
         c3 = candles[i]
-        # FVG bullish: low[c3] > high[c1]
         if c3["low"] > c1["high"]:
             top = c3["low"]
             bot = c1["high"]
-            # mitigado si close actual < bottom
             if candles[-1]["close"] < bot:
                 key = f"bull_{c1['time']}"
                 if key not in known:
                     known.add(key)
                     alerts.append(f"IFVG BEARISH creado | XAUUSD H1\nTop: {top:.2f} | Bot: {bot:.2f}\nHora: {candles[-1]['time']}")
-        # FVG bearish: high[c3] < low[c1]
         if c3["high"] < c1["low"]:
             top = c1["low"]
             bot = c3["high"]
-            # mitigado si close actual > top
             if candles[-1]["close"] > top:
                 key = f"bear_{c1['time']}"
                 if key not in known:
