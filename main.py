@@ -22,7 +22,7 @@ def get_candles():
     result = []
     for c in data["values"]:
         dt = datetime.strptime(c["datetime"], "%Y-%m-%d %H:%M:%S")
-        dt_ny = dt + timedelta(hours=3)
+        dt_ny = dt - timedelta(hours=4)
         result.append({
             "time":  dt_ny.strftime("%Y-%m-%d %H:%M") + " NY",
             "open":  float(c["open"]),
