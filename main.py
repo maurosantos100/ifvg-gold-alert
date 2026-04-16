@@ -103,7 +103,11 @@ while True:
         candles = get_candles()
         if len(candles) >= 4:
             fvgs = get_active_fvgs(candles)
-            last = candles[-2]  # vela cerrada, no la actual en curso
+            print(f"FVGs activos: {len(fvgs)}")
+            for f in fvgs:
+                print(f"  {f['type']} top:{f['top']:.2f} bot:{f['bot']:.2f} formado:{f['formed']}")
+            last = candles[-2]
+            print(f"Ultima vela cerrada: {last['time']} close:{last['close']:.2f}")
             alerts = check_ifvg(fvgs, last)
             for key, msg in alerts:
                 if key not in sent:
