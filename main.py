@@ -99,7 +99,7 @@ while True:
         candles = get_candles()
         if len(candles) >= 4:
             fvgs = get_active_fvgs(candles)
-            last = candles[-1]
+            last = candles[-2]  # vela cerrada, no la actual en curso
             alerts = check_ifvg(fvgs, last)
             for key, msg in alerts:
                 if key not in sent:
