@@ -1,5 +1,6 @@
 import time
 import requests
+from datetime import datetime
 
 TELEGRAM_TOKEN = "8308050985:AAFcTT2_ZP-h7Cie8UhRO71mKKrUkH8RAbQ"
 TELEGRAM_CHAT_ID = "640214582"
@@ -12,7 +13,7 @@ def send_telegram(msg):
 def get_candles():
     url = (
         f"https://api.twelvedata.com/time_series"
-        f"?symbol=XAU/USD&interval=1h&outputsize=50&apikey={TWELVEDATA_KEY}"
+        f"?symbol=XAU/USD&interval=1h&outputsize=200&apikey={TWELVEDATA_KEY}"
     )
     r = requests.get(url)
     data = r.json()
@@ -67,6 +68,20 @@ def find_ifvg_events(fvgs, candles):
                     break
     return events
 
+def segundos_hasta_proximo_chequeo():
+    """Calcula segundos hasta el proximo :02, :17, :32 o :47 de la hora actual."""
+    ahora = datetime.utcnow()
+    minuto = ahora.minute
+    segundo = ahora.second
+    minutos_chequeo = [2, 17, 32, 47]
+    for m in minutos_chequeo:
+        if minuto < m or (minuto == m and segundo == 0):
+            espera = (m - minuto) * 60 - segundo
+            return max(espera, 1)
+    # si pasamos el :47, esperar hasta el :02 de la proxima hora
+    espera = (60 - minuto + 2) * 60 - segundo
+    return max(espera, 1)
+
 sent = set()
 
 while True:
@@ -74,11 +89,9 @@ while True:
         candles = get_candles()
         if len(candles) >= 4:
             fvgs = get_fvgs(candles)
-            last_bar = len(candles) - 2  # ultima vela cerrada
+            last_bar = len(candles) - 2
             events = find_ifvg_events(fvgs, candles)
             for key, msg, bar_idx in events:
-                # FIX: alertar si ocurrio en ultima vela O en la anterior
-                # cubre el caso donde el chequeo llega justo cuando ya avanzo la vela
                 if bar_idx >= last_bar - 1 and key not in sent:
                     send_telegram(msg)
                     sent.add(key)
@@ -88,4 +101,7 @@ while True:
                     print(f"Skipped (pasado): {key}")
     except Exception as e:
         print(f"Error: {e}")
-    time.sleep(300)
+
+    espera = segundos_hasta_proximo_chequeo()
+    print(f"Proximo chequeo en {espera}s")
+    time.sleep(espera)
