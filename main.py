@@ -34,25 +34,12 @@ def get_fvgs(candles):
     for i in range(2, len(candles)):
         c1 = candles[i - 2]
         c3 = candles[i]
-
         if c3["low"] > c1["high"]:
-            fvgs.append({
-                "type": "bullish",
-                "top":  c3["low"],
-                "bot":  c1["high"],
-                "bar":  i,
-                "formed": c3["time"],
-            })
-
+            fvgs.append({"type": "bullish", "top": c3["low"], "bot": c1["high"],
+                         "bar": i, "formed": c3["time"]})
         if c3["high"] < c1["low"]:
-            fvgs.append({
-                "type": "bearish",
-                "top":  c1["low"],
-                "bot":  c3["high"],
-                "bar":  i,
-                "formed": c3["time"],
-            })
-
+            fvgs.append({"type": "bearish", "top": c1["low"], "bot": c3["high"],
+                         "bar": i, "formed": c3["time"]})
     return fvgs
 
 def find_ifvg_events(fvgs, candles):
@@ -62,29 +49,22 @@ def find_ifvg_events(fvgs, candles):
             c = candles[j]
             body_high = max(c["open"], c["close"])
             body_low  = min(c["open"], c["close"])
-
             if fvg["type"] == "bullish":
                 if c["close"] < fvg["bot"] and body_low < fvg["bot"]:
                     key = f"ifvg_bear_{fvg['formed']}"
-                    msg = (
-                        f"IFVG BEARISH creado | XAUUSD H1\n"
-                        f"FVG top: {fvg['top']:.2f} | Bot: {fvg['bot']:.2f}\n"
-                        f"Invalidado en: {c['time']}"
-                    )
+                    msg = (f"IFVG BEARISH creado | XAUUSD H1\n"
+                           f"FVG top: {fvg['top']:.2f} | Bot: {fvg['bot']:.2f}\n"
+                           f"Invalidado en: {c['time']}")
                     events.append((key, msg, j))
                     break
-
             elif fvg["type"] == "bearish":
                 if c["close"] > fvg["top"] and body_high > fvg["top"]:
                     key = f"ifvg_bull_{fvg['formed']}"
-                    msg = (
-                        f"IFVG BULLISH creado | XAUUSD H1\n"
-                        f"FVG top: {fvg['top']:.2f} | Bot: {fvg['bot']:.2f}\n"
-                        f"Invalidado en: {c['time']}"
-                    )
+                    msg = (f"IFVG BULLISH creado | XAUUSD H1\n"
+                           f"FVG top: {fvg['top']:.2f} | Bot: {fvg['bot']:.2f}\n"
+                           f"Invalidado en: {c['time']}")
                     events.append((key, msg, j))
                     break
-
     return events
 
 sent = set()
@@ -94,11 +74,12 @@ while True:
         candles = get_candles()
         if len(candles) >= 4:
             fvgs = get_fvgs(candles)
-            last_bar = len(candles) - 2
-            print(f"Candles: {len(candles)} | FVGs: {len(fvgs)} | Ultima vela: {candles[last_bar]['time']} close:{candles[last_bar]['close']:.2f}")
+            last_bar = len(candles) - 2  # ultima vela cerrada
             events = find_ifvg_events(fvgs, candles)
             for key, msg, bar_idx in events:
-                if bar_idx == last_bar and key not in sent:
+                # FIX: alertar si ocurrio en ultima vela O en la anterior
+                # cubre el caso donde el chequeo llega justo cuando ya avanzo la vela
+                if bar_idx >= last_bar - 1 and key not in sent:
                     send_telegram(msg)
                     sent.add(key)
                     print(f"Sent: {msg}")
