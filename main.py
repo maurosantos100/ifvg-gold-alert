@@ -1,6 +1,6 @@
 import time
 import requests
-from datetime import datetime
+from datetime import datetime, timezone
 
 TELEGRAM_TOKEN = "8308050985:AAFcTT2_ZP-h7Cie8UhRO71mKKrUkH8RAbQ"
 TELEGRAM_CHAT_ID = "640214582"
@@ -69,8 +69,7 @@ def find_ifvg_events(fvgs, candles):
     return events
 
 def segundos_hasta_proximo_chequeo():
-    """Calcula segundos hasta el proximo :02, :17, :32 o :47 de la hora actual."""
-    ahora = datetime.utcnow()
+    ahora = datetime.now(timezone.utc)
     minuto = ahora.minute
     segundo = ahora.second
     minutos_chequeo = [2, 17, 32, 47]
@@ -78,7 +77,6 @@ def segundos_hasta_proximo_chequeo():
         if minuto < m or (minuto == m and segundo == 0):
             espera = (m - minuto) * 60 - segundo
             return max(espera, 1)
-    # si pasamos el :47, esperar hasta el :02 de la proxima hora
     espera = (60 - minuto + 2) * 60 - segundo
     return max(espera, 1)
 
